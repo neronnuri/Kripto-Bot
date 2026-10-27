@@ -1,5 +1,9 @@
 # Kripto Bot — Kurulum
 
+> ⚠️ **Yatırım tavsiyesi değildir.** Burada yer alan bilgi ve ayarlar yatırım danışmanlığı kapsamında
+> değildir. Kâr garantisi yoktur, paranın tamamını kaybedebilirsin. İşlem tutarı, kâr hedefi ve
+> **stop-loss oranlarını kendi risk durumuna göre kendin belirle.** Ayrıntılar: [README.md](README.md)
+
 ## 1. Python paketleri
 Klasörde komut satırı (cmd) aç:
 ```
