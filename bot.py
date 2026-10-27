@@ -304,6 +304,29 @@ def set_target(state, args):
        f"Şu anki fiyat: {price:.2f}")
 
 
+def live_line(state, price):
+    """Her kontrolde ekrana (yalnızca konsola, log dosyasına değil) tek satır durum yazar."""
+    parts = [datetime.now(TZ).strftime("%H:%M:%S"),
+             f"{SYMBOL.split('/')[0]} {price:,.2f}",
+             "▶ çalışıyor" if state["active"] else "⏸ durdu"]
+    pos = state["position"]
+    if pos:
+        pnl = (price / pos["entry"] - 1) * 100
+        val = pos["amount"] * price - pos["cost"]
+        parts.append(f"Pozisyon {pnl:+.2f}% ({val:+.3f} USDT)")
+        parts.append(f"Hedef {pos['tp']:,.2f} (%{(pos['tp'] / price - 1) * 100:.2f} uzakta)")
+        if pos.get("sl"):
+            parts.append(f"SL {pos['sl']:,.2f} (%{(1 - pos['sl'] / price) * 100:.2f} uzakta)")
+    elif state["last_sell"]:
+        parts.append(f"Pozisyon yok, alım için fiyat < {state['last_sell']:,.2f} olmalı")
+        wait = state["cooldown_until"] - time.time()
+        if wait > 0:
+            parts.append(f"bekleme {wait / 60:.0f} dk")
+    else:
+        parts.append("Pozisyon yok")
+    print(" | ".join(parts), flush=True)
+
+
 def handle_command(state, text):
     parts = text.split()
     cmd = (parts or [""])[0].split("@")[0].lower()
@@ -389,6 +412,7 @@ def main():
                         log.info("Günlük zarar limiti doldu, alım atlandı.")
                     else:
                         buy(state, price, "ilk alım" if last is None else "son satışın altında")
+            live_line(state, price)
 
             now = datetime.now(TZ)
             if now.hour >= REPORT_HOUR and state["last_report"] != now.date().isoformat():
