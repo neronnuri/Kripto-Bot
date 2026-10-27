@@ -1,0 +1,8 @@
+# Gizli bilgiler - ASLA GitHub'a yüklenmez
+.env
+
+# Botun çalışırken ürettiği dosyalar
+state.json
+trades.csv
+bot.log
+__pycache__/
