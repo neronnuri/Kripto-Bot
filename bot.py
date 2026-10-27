@@ -7,9 +7,9 @@ Basit kripto al-sat botu
 - Alım tutarı: en fazla TRADE_USDT, spot bakiye daha azsa bakiyenin tamamı
 - Günlük zarar limiti (aşılırsa o gün yeni alım yapılmaz)
 - Telegram: her işlem anında + her gün belirlenen saatte özet
-- Telegram komutları: /baslat, /durdur, /durum (yalnızca TELEGRAM_CHAT_ID'den gelenler)
+- Telegram komutları: /baslat, /durdur, /durum, /hedef <fiyat> (yalnızca TELEGRAM_CHAT_ID'den gelenler)
 """
-import os, time, json, csv, logging, socket
+import os, re, time, json, csv, logging, socket
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -102,7 +102,8 @@ def tg_set_commands():
         return
     cmds = [{"command": "baslat", "description": "Alım-satımı başlat"},
             {"command": "durdur", "description": "Yeni alımları durdur"},
-            {"command": "durum", "description": "Pozisyon, fiyat ve kâr durumu"}]
+            {"command": "durum", "description": "Pozisyon, fiyat ve kâr durumu"},
+            {"command": "hedef", "description": "Açık pozisyonun satış hedefini değiştir: /hedef 82500"}]
     try:
         requests.post(f"https://api.telegram.org/bot{TG_TOKEN}/setMyCommands",
                       json={"commands": cmds}, timeout=10)
@@ -261,9 +262,54 @@ def status_text(state):
     return "\n".join(lines)
 
 
+def parse_price(txt):
+    """'80720', '80.720' (binlik nokta), '80,720.5' veya '80720,5' gibi yazımları sayıya çevirir."""
+    txt = txt.strip().replace("$", "")
+    if re.fullmatch(r"\d{1,3}(\.\d{3})+(,\d+)?", txt):      # 80.720 veya 80.720,5
+        txt = txt.replace(".", "").replace(",", ".")
+    elif re.fullmatch(r"\d{1,3}(,\d{3})+(\.\d+)?", txt):    # 80,720 veya 80,720.5
+        txt = txt.replace(",", "")
+    else:
+        txt = txt.replace(",", ".")
+    return float(txt)
+
+
+def set_target(state, args):
+    pos = state["position"]
+    if not pos:
+        tg("Açık pozisyon yok, değiştirilecek bir satış hedefi bulunmuyor.")
+        return
+    if not args:
+        tg(f"Şu anki satış hedefi: {pos['tp']:.2f}\nDeğiştirmek için: /hedef 82500")
+        return
+    try:
+        target = parse_price(args[0])
+    except ValueError:
+        tg("Fiyatı anlayamadım. Örnek: /hedef 82500")
+        return
+    price = float(exchange.fetch_ticker(SYMBOL)["last"])
+    if not (price * 0.5 <= target <= price * 2):
+        tg(f"⛔ {target:.2f} mevcut fiyattan ({price:.2f}) çok uzak, hedef değiştirilmedi.")
+        return
+    confirmed = len(args) > 1 and args[1].lower() in ("evet", "onay", "onayla")
+    if target <= price and not confirmed:
+        tg(f"⚠️ {target:.2f} şu anki fiyatın ({price:.2f}) altında: bu hedefle pozisyon HEMEN satılır"
+           + (f" ve alış fiyatının ({pos['entry']:.2f}) altında olduğu için ZARARINA satılır." if target < pos["entry"] else ".")
+           + f"\nYine de istiyorsan şunu yaz: /hedef {args[0]} evet")
+        return
+    old = pos["tp"]
+    pos["tp"] = target
+    change = (target / pos["entry"] - 1) * 100
+    tg(f"🎯 Satış hedefi değişti: {old:.2f} → {target:.2f} (alış fiyatına göre {change:+.2f}%)\n"
+       f"Şu anki fiyat: {price:.2f}")
+
+
 def handle_command(state, text):
-    cmd = (text.split() or [""])[0].split("@")[0].lower()
-    if cmd == "/baslat":
+    parts = text.split()
+    cmd = (parts or [""])[0].split("@")[0].lower()
+    if cmd == "/hedef":
+        set_target(state, parts[1:])
+    elif cmd == "/baslat":
         state["active"] = True
         tg("▶️ Alım-satım başladı.")
     elif cmd == "/durdur":
@@ -272,7 +318,7 @@ def handle_command(state, text):
     elif cmd == "/durum":
         tg(status_text(state))
     else:
-        tg("Komutlar:\n/baslat — alım-satımı başlat\n/durdur — yeni alımları durdur\n/durum — durumu göster")
+        tg("Komutlar:\n/baslat — alım-satımı başlat\n/durdur — yeni alımları durdur\n/durum — durumu göster\n/hedef 82500 — satış hedefini değiştir")
     save_state(state)
 
 
